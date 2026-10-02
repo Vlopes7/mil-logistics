@@ -1,0 +1,32 @@
+{
+  "name": "mil-logistics",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "install:all": "npm install && npm run backend:install",
+    "dev": "concurrently -k -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "python -m uvicorn app.main:app --app-dir backend --reload --host 0.0.0.0 --port 8000",
+    "dev:web": "npm run dev --workspace frontend",
+    "build": "npm run build --workspace frontend",
+    "test": "npm run test --workspace frontend && npm run test:api",
+    "test:frontend": "npm run test --workspace frontend",
+    "test:api": "python -m pytest backend/tests",
+    "backend:install": "python -m pip install -r backend/requirements.txt",
+    "backend:venv": "python -m venv backend/.venv",
+    "db:up": "docker compose up -d mongodb",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f mongodb",
+    "stack:up": "docker compose up -d mongodb && concurrently -k -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
+    "stack:down": "docker compose down",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.3",
+    "concurrently": "^9.2.1",
+    "husky": "^9.1.7"
+  }
+}

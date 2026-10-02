@@ -1,0 +1,43 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+:root {
+  font-family: 'DM Sans', sans-serif;
+  color: #e9eee8;
+  background: #101713;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse at 50% 45%, #1c3127 0, #101713 58%);
+}
+
+.shell { width: min(100% - 40px, 620px); text-align: center; }
+.brand-mark {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 26px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #526e5d;
+  border-radius: 18px;
+  color: #c4e2b6;
+  background: #20372b;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.08em;
+}
+.eyebrow { margin: 0 0 12px; color: #a7c9a1; font-size: 11px; font-weight: 700; letter-spacing: 0.22em; }
+h1 { margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: clamp(32px, 7vw, 48px); letter-spacing: -0.055em; }
+.description { max-width: 400px; margin: 16px auto 25px; color: #a0aaa2; line-height: 1.7; }
+.status { display: inline-flex; align-items: center; gap: 9px; padding: 9px 13px; border: 1px solid #34443a; border-radius: 999px; color: #c1c9c1; font-size: 12px; }
+.status span { width: 7px; height: 7px; border-radius: 50%; background: #8ec982; box-shadow: 0 0 12px #8ec98288; }
