@@ -1,14 +1,13 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from pymongo.errors import PyMongoError
+
+from app.db.client import client
 
 router = APIRouter(tags=["health"])
 
 
 @router.get("/health")
-async def health(request: Request) -> dict[str, str]:
-    client = getattr(request.app.state, "mongo_client", None)
-    if client is None:
-        return {"status": "ok", "database": "not_configured"}
+async def health() -> dict[str, str]:
     try:
         await client.admin.command("ping")
     except PyMongoError:
