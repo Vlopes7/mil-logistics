@@ -10,6 +10,22 @@ from app.db.client import get_database
 router = APIRouter(tags=["dashboard"])
 COMPLETED_STATUSES = ["atendida", "concluida", "concluído"]
 CLOSED_STATUSES = [*COMPLETED_STATUSES, "cancelada", "cancelado"]
+PRIORITY_RANK = {"baixa": 0, "normal": 1, "alta": 2, "critica": 3}
+
+
+def priority_rank(value: Any) -> int:
+    if isinstance(value, str):
+        return PRIORITY_RANK.get(value, -1)
+    if isinstance(value, (int, float)):
+        if value >= 88:
+            return 3
+        if value >= 63:
+            return 2
+        if value >= 38:
+            return 1
+        if value >= 0:
+            return 0
+    return -1
 
 
 def serialize_date(value: Any) -> str | None:
@@ -33,13 +49,10 @@ async def dashboard(database=Depends(get_database)) -> dict[str, Any]:
         completed = await requests.count_documents({"status": {"$in": COMPLETED_STATUSES}})
         pending = await requests.count_documents({"status": {"$nin": CLOSED_STATUSES}})
         review = await requests.count_documents({"decisao.revisao_humana": True})
-        high_priority = await requests.count_documents({"decisao.prioridade": {"$gte": 75}})
-
-        average_cursor = await requests.aggregate([
-            {"$match": {"decisao.prioridade": {"$type": "number"}}},
-            {"$group": {"_id": None, "value": {"$avg": "$decisao.prioridade"}}},
-        ])
-        average_result = await average_cursor.to_list(length=1)
+        high_priority = await requests.count_documents({"$or": [
+            {"decisao.prioridade": {"$in": ["alta", "critica"]}},
+            {"decisao.prioridade": {"$gte": 75}},
+        ]})
 
         category_cursor = await requests.aggregate([
             {"$match": {"decisao.categoria": {"$type": "string"}}},
@@ -48,10 +61,15 @@ async def dashboard(database=Depends(get_database)) -> dict[str, Any]:
         ])
         category_result = await category_cursor.to_list(length=50)
 
-        documents = await requests.find({}).sort([
-            ("decisao.prioridade", -1),
-            ("criado_em", -1),
-        ]).limit(8).to_list(length=8)
+        documents = await requests.find({}).to_list(length=1000)
+        documents.sort(
+            key=lambda document: (
+                priority_rank(((document.get("decisao") or document.get("classificacao") or {}).get("prioridade"))),
+                serialize_date(document.get("criado_em") or document.get("data") or document.get("created_at")) or "",
+            ),
+            reverse=True,
+        )
+        documents = documents[:8]
     except PyMongoError as error:
         raise HTTPException(status_code=503, detail="Não foi possível consultar o MongoDB.") from error
 
@@ -84,7 +102,6 @@ async def dashboard(database=Depends(get_database)) -> dict[str, Any]:
             "review": review,
             "completed": completed,
             "high_priority": high_priority,
-            "average_priority": round(average_result[0]["value"], 1) if average_result else None,
         },
         "categories": [
             {"name": item["_id"] or "Sem classificação", "total": item["total"]}

@@ -9,7 +9,6 @@ export interface DashboardMetrics {
   review: number
   completed: number
   high_priority: number
-  average_priority: number | null
 }
 
 export interface CategorySummary { name: string; total: number }
@@ -37,10 +36,12 @@ export interface Inventory {
   unidade_medida: string
   observacoes?: string | null
 }
+export type Priority = 'baixa' | 'normal' | 'alta' | 'critica'
 export interface Decision {
   categoria?: string | null
   setor?: string | null
-  prioridade?: number | null
+  prioridade?: Priority | number | null
+  regra_prioridade_aplicada?: string | null
   revisao_humana?: boolean
   revisada_por?: string
   revisada_em?: string
@@ -63,7 +64,7 @@ export interface LogisticsRequest {
   material?: string
   category?: string
   sector?: string
-  priority?: number | null
+  priority?: Priority | number | null
   needs_review?: boolean
   created_at?: string | null
 }
@@ -91,7 +92,7 @@ export interface ReviewPayload {
   notas?: string
   categoria?: string
   setor?: string
-  prioridade?: number
+  prioridade?: Priority
   status?: string
 }
 
@@ -102,7 +103,7 @@ export class APIError extends Error {
   }
 }
 
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
+const apiBaseUrl = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000/api/v1'
 const apiOrigin = new URL(apiBaseUrl).origin
 
 export class APIClient {
@@ -112,12 +113,17 @@ export class APIClient {
   getDashboard() { return this.request<DashboardData>(`${this.baseUrl}/dashboard`) }
   getUnits() { return this.request<Entity[]>(`${this.baseUrl}/unidades`) }
   createUnit(data: Pick<Entity, 'nome'> & Partial<Pick<Entity, 'descricao' | 'ativo' | 'codigo' | 'localizacao'>>) { return this.request<Entity>(`${this.baseUrl}/unidades`, 'POST', data) }
+  updateUnit(id: string, data: Partial<Pick<Entity, 'nome' | 'descricao' | 'ativo' | 'codigo' | 'localizacao'>>) { return this.request<Entity>(`${this.baseUrl}/unidades/${id}`, 'PATCH', data) }
+  deleteUnit(id: string) { return this.request<void>(`${this.baseUrl}/unidades/${id}`, 'DELETE') }
   getMaterials() { return this.request<Entity[]>(`${this.baseUrl}/materiais`) }
   createMaterial(data: Pick<Entity, 'nome'> & Partial<Pick<Entity, 'descricao' | 'ativo' | 'codigo' | 'categoria' | 'unidade_medida'>>) { return this.request<Entity>(`${this.baseUrl}/materiais`, 'POST', data) }
+  updateMaterial(id: string, data: Partial<Pick<Entity, 'nome' | 'descricao' | 'ativo' | 'codigo' | 'categoria' | 'unidade_medida'>>) { return this.request<Entity>(`${this.baseUrl}/materiais/${id}`, 'PATCH', data) }
+  deleteMaterial(id: string) { return this.request<void>(`${this.baseUrl}/materiais/${id}`, 'DELETE') }
   getInventory() { return this.request<Inventory[]>(`${this.baseUrl}/estoques`) }
   createInventory(data: Omit<Inventory, 'id'>) { return this.request<Inventory>(`${this.baseUrl}/estoques`, 'POST', data) }
   upsertInventory(data: Omit<Inventory, 'id'>) { return this.request<Inventory>(`${this.baseUrl}/estoques`, 'PUT', data) }
   updateInventory(id: string, data: Partial<Pick<Inventory, 'quantidade' | 'unidade_medida' | 'observacoes'>>) { return this.request<Inventory>(`${this.baseUrl}/estoques/${id}`, 'PATCH', data) }
+  deleteInventory(id: string) { return this.request<void>(`${this.baseUrl}/estoques/${id}`, 'DELETE') }
   getRequests(params: { status?: string; precisa_revisao?: boolean } = {}) {
     const query = new URLSearchParams()
     if (params.status) query.set('status', params.status)
@@ -126,6 +132,8 @@ export class APIClient {
   }
   getRequestsForReview() { return this.request<LogisticsRequest[]>(`${this.baseUrl}/solicitacoes/revisao`) }
   createRequest(data: RequestPayload) { return this.request<LogisticsRequest>(`${this.baseUrl}/solicitacoes`, 'POST', data) }
+  updateRequest(id: string, data: Partial<RequestPayload>) { return this.request<LogisticsRequest>(`${this.baseUrl}/solicitacoes/${id}`, 'PATCH', data) }
+  deleteRequest(id: string) { return this.request<void>(`${this.baseUrl}/solicitacoes/${id}`, 'DELETE') }
   updateRequestStatus(id: string, status: string) { return this.request<LogisticsRequest>(`${this.baseUrl}/solicitacoes/${id}`, 'PATCH', { status }) }
   getRequest(id: string) { return this.request<LogisticsRequest>(`${this.baseUrl}/solicitacoes/${id}`) }
   getDecisions(id: string) { return this.request<DecisionHistory[]>(`${this.baseUrl}/solicitacoes/${id}/decisoes`) }
@@ -136,6 +144,7 @@ export class APIClient {
     try {
       response = await fetch(url, {
         method,
+        cache: 'no-store',
         headers: { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
         body: body ? JSON.stringify(body) : undefined,
       })

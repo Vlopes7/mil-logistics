@@ -7,7 +7,6 @@
   ],
   "scripts": {
     "install:all": "npm install && npm run server:install",
-    "install:all:laya": "npm run install:all && npm run server:install:laya",
     "dev": "concurrently -k -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "python -m uvicorn app.main:app --app-dir server --reload --host 0.0.0.0 --port 8000",
     "dev:web": "npm run dev --workspace frontend",
@@ -17,7 +16,6 @@
     "test:frontend": "npm run test --workspace frontend",
     "test:api": "python -m pytest server/tests",
     "server:install": "python -m pip install -r server/requirements.txt",
-    "server:install:laya": "python -m pip install laya",
     "server:venv": "python -m venv server/.venv",
     "prepare": "husky"
   },

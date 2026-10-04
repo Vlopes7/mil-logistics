@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -77,7 +77,7 @@ class RequestUpdate(BaseModel):
 class HumanReview(BaseModel):
     categoria: str | None = None
     setor: str | None = None
-    prioridade: int | None = Field(default=None, ge=0, le=100)
+    prioridade: Literal["baixa", "normal", "alta", "critica"] | None = None
     status: str | None = Field(default=None, pattern="^(pendente|em_analise|aprovada|rejeitada|atendida|concluida|cancelada)$")
     revisor: str = Field(min_length=1, max_length=160)
     notas: str | None = None

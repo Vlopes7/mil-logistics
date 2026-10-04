@@ -16,8 +16,8 @@ O Mil Logistics propõe centralizar os pedidos e automatizar parte dessa triagem
 
 1. Uma unidade registra uma solicitação com o material, a quantidade e o motivo do pedido.
 2. A API recebe e armazena a solicitação.
-3. Uma camada de decisão analisa os dados e sugere uma categoria, um setor responsável e uma pontuação de prioridade.
-4. A camada também indica se a solicitação pode seguir automaticamente ou se precisa de revisão humana.
+3. A LAYA analisa os dados e sugere uma categoria, um setor responsável e uma prioridade baixa, normal, alta ou crítica.
+4. A sugestão segue para revisão humana, que pode confirmar ou corrigir a classificação antes do encaminhamento.
 5. O resultado da decisão é armazenado junto à solicitação, e seu histórico fica registrado.
 6. Os usuários acompanham solicitações, prioridades e revisões pelo sistema.
 
@@ -38,19 +38,21 @@ Exemplo de resultado da triagem:
 {
   "categoria": "manutencao",
   "setor": "almoxarifado",
-  "prioridade": 85,
-  "confianca": 0.92,
-  "revisao_humana": false
+  "prioridade": "alta",
+  "confianca": 0.82,
+  "revisao_humana": true,
+  "provedor": "laya"
 }
 ```
 
 ## Decisões e revisão humana
 
-A triagem considera três aspectos:
+A triagem e a revisão humana consideram:
 
 - **Classificação:** identifica a categoria da solicitação, como manutenção, saúde, transporte, compras, administrativo ou outros.
-- **Prioridade:** atribui uma pontuação de 0 a 100 para ajudar a ordenar a fila de atendimento.
-- **Verificação:** avalia se há informação suficiente para seguir o fluxo ou se é necessária revisão humana.
+- **Prioridade:** classifica cada solicitação como baixa, normal, alta ou crítica para ordenar a fila de atendimento.
+- **Regra operacional:** estoque registrado em zero junto a um atendimento, consulta ou procedimento previsto para hoje eleva a prioridade para alta, caso a sugestão seja baixa ou normal.
+- **Revisão humana:** toda sugestão pode ser conferida e alterada por uma pessoa responsável antes do encaminhamento.
 
 Uma pessoa responsável poderá revisar uma solicitação e confirmar ou corrigir a classificação. Tanto as decisões automáticas quanto as alterações humanas devem compor o histórico da solicitação.
 
@@ -66,17 +68,17 @@ O MongoDB será o banco de dados principal. A estrutura de documentos permite gu
 
 ## Acompanhamento
 
-O sistema prevê uma área de acompanhamento para consultar a fila de solicitações, visualizar prioridades e identificar pedidos que aguardam revisão ou já foram atendidos. Também poderão ser consultados indicadores como solicitações por categoria, unidade e setor, prioridade média e evolução ao longo do tempo.
+O sistema permite acompanhar solicitações recentes, pedidos em andamento, solicitações de prioridade alta ou crítica, revisões pendentes e pedidos concluídos. A visão geral também resume as solicitações por categoria.
 
 ## API e tecnologias
 
 - **Frontend:** React, com Vite e Vitest para desenvolvimento e testes.
 - **Backend:** Python e FastAPI, responsáveis pela API REST e validação das requisições.
 - **Banco de dados:** MongoDB para solicitações, cadastros e histórico.
-- **Camada de decisão:** Laya ou tecnologia compatível, mantida desacoplada para permitir sua substituição durante o desenvolvimento.
+- **Camada de decisão:** LAYA, usada para sugerir categoria, setor e faixa de prioridade; a decisão permanece sujeita à revisão humana.
 
 A API fará a ligação entre a interface, o banco de dados e a camada de decisão. A documentação dos endpoints fica disponível pelo OpenAPI do FastAPI durante a execução da aplicação.
 
 ## Escopo previsto
 
-A proposta inicial contempla cadastro de unidades e materiais, registro e acompanhamento de solicitações, classificação e priorização, indicação de revisão humana, armazenamento do histórico, consultas e indicadores. Recursos como fornecedores, compras, transporte e controle avançado de estoque podem ser considerados posteriormente.
+A aplicação permite cadastrar, consultar, editar e excluir unidades, materiais e posições de estoque. Solicitações também podem ser registradas, consultadas, editadas e excluídas; quando seus dados de classificação mudam, a triagem é refeita e o pedido volta para revisão humana. Materiais ou unidades vinculados a solicitações ou ao estoque não podem ser excluídos para preservar esses vínculos. O histórico das decisões é mantido junto ao fluxo da solicitação.

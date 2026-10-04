@@ -7,11 +7,27 @@ from app.db.client import get_database
 from app.schemas import (EntityCreate, EntityUpdate, UnitCreate, UnitUpdate, MaterialCreate,
                          MaterialUpdate, HumanReview, InventoryCreate,
                          InventoryUpsert, InventoryUpdate, RequestCreate, RequestUpdate, serialize)
-from app.services.decisions import make_decision
+from app.services.decisions import apply_priority_rules, make_decision
 
 router = APIRouter(tags=["logística"])
 UTC_NOW = lambda: datetime.now(timezone.utc)
 COLLECTIONS = {"unidades": "unidades", "materiais": "materiais"}
+PRIORITY_RANK = {"baixa": 0, "normal": 1, "alta": 2, "critica": 3}
+
+
+def priority_rank(value: Any) -> int:
+    if isinstance(value, str):
+        return PRIORITY_RANK.get(value, -1)
+    if isinstance(value, (int, float)):
+        if value >= 88:
+            return 3
+        if value >= 63:
+            return 2
+        if value >= 38:
+            return 1
+        if value >= 0:
+            return 0
+    return -1
 
 
 def oid(value: str) -> ObjectId:
@@ -165,14 +181,28 @@ async def delete_inventory(entity_id: str, database=Depends(get_database)):
 async def create_request_document(database, payload: RequestCreate):
     unit = await require_entity(database, "unidades", payload.unidade_id)
     material = await require_entity(database, "materiais", payload.material_id)
+    inventory = await database.estoques.find_one({
+        "unidade_id": payload.unidade_id,
+        "material_id": payload.material_id,
+    })
     data = payload.model_dump()
     data.update(status="pendente", criado_em=UTC_NOW(), atualizado_em=UTC_NOW(), decisao=None)
     try:
-        decision = await make_decision({**data, "unidade": unit, "material": material})
+        decision = await make_decision({
+            **data,
+            "unidade": unit,
+            "material": material,
+            "estoque": inventory,
+        })
     except Exception:
         # Fail closed: save request; no fabricated classification/confidence.
-        data["decisao"] = {"categoria": None, "setor": None, "prioridade": None,
+        rule_priority, priority_rule = apply_priority_rules(None, {
+            "estoque": inventory,
+            "justificativa": data.get("justificativa", ""),
+        })
+        data["decisao"] = {"categoria": None, "setor": None, "prioridade": rule_priority,
                             "revisao_humana": True,
+                            "regra_prioridade_aplicada": priority_rule,
                             "erro_provedor": "Provedor de decisão indisponível; revisão humana necessária."}
         data["status"] = "aguardando_revisao"
     else:
@@ -199,22 +229,26 @@ async def requests_for_review(database=Depends(get_database)):
 @router.get("/solicitacoes/prioridade")
 async def requests_by_priority(order: str = Query("desc", pattern="^(asc|desc)$"),
                                database=Depends(get_database)):
-    docs = await database.solicitacoes.find({}).sort("decisao.prioridade", -1 if order == "desc" else 1).to_list(1000)
+    docs = await database.solicitacoes.find({}).to_list(1000)
+    docs.sort(key=lambda row: priority_rank((row.get("decisao") or {}).get("prioridade")),
+              reverse=order == "desc")
     return [serialize(row) for row in docs]
 
 
 @router.get("/solicitacoes")
 async def list_requests(status: str | None = None, unidade_id: str | None = None,
-                        precisa_revisao: bool | None = None, prioridade_min: int | None = Query(None, ge=0, le=100),
-                        prioridade_max: int | None = Query(None, ge=0, le=100),
+                        precisa_revisao: bool | None = None,
+                        prioridade: str | None = Query(None, pattern="^(baixa|normal|alta|critica)$"),
                         order: str = Query("desc", pattern="^(asc|desc)$"), database=Depends(get_database)):
     query: dict[str, Any] = {}
     if status: query["status"] = status
     if unidade_id: query["unidade_id"] = unidade_id
     if precisa_revisao is not None: query["decisao.revisao_humana"] = precisa_revisao
-    if prioridade_min is not None or prioridade_max is not None:
-        query["decisao.prioridade"] = {k: v for k, v in (("$gte", prioridade_min), ("$lte", prioridade_max)) if v is not None}
-    docs = await database.solicitacoes.find(query).sort("decisao.prioridade", -1 if order == "desc" else 1).to_list(1000)
+    if prioridade is not None:
+        query["decisao.prioridade"] = prioridade
+    docs = await database.solicitacoes.find(query).to_list(1000)
+    docs.sort(key=lambda row: priority_rank((row.get("decisao") or {}).get("prioridade")),
+              reverse=order == "desc")
     return [serialize(row) for row in docs]
 
 
@@ -255,12 +289,49 @@ async def get_request(request_id: str, database=Depends(get_database)):
 async def update_request(request_id: str, payload: RequestUpdate, database=Depends(get_database)):
     current = await require_entity(database, "solicitacoes", request_id)
     values = payload.model_dump(exclude_unset=True)
-    if values.get("unidade_id"):
-        await require_entity(database, "unidades", values["unidade_id"])
-    if values.get("material_id"):
-        await require_entity(database, "materiais", values["material_id"])
-    if values.get("status") == "aprovada": values["status"] = "aprovada"
+    request_fields = {"unidade_id", "material_id", "quantidade", "justificativa"}
+    reclassify = bool(request_fields.intersection(values))
+    updated_request = {**current, **values}
+
+    if reclassify:
+        unit = await require_entity(database, "unidades", updated_request["unidade_id"])
+        material = await require_entity(database, "materiais", updated_request["material_id"])
+        inventory = await database.estoques.find_one({
+            "unidade_id": updated_request["unidade_id"],
+            "material_id": updated_request["material_id"],
+        })
+        try:
+            decision = await make_decision({
+                **updated_request,
+                "unidade": unit,
+                "material": material,
+                "estoque": inventory,
+            })
+        except Exception:
+            rule_priority, priority_rule = apply_priority_rules(None, {
+                "estoque": inventory,
+                "justificativa": updated_request.get("justificativa", ""),
+            })
+            decision = {
+                "categoria": None,
+                "setor": None,
+                "prioridade": rule_priority,
+                "revisao_humana": True,
+                "regra_prioridade_aplicada": priority_rule,
+                "erro_provedor": "Provedor de decisão indisponível; revisão humana necessária.",
+            }
+        values["decisao"] = decision
+        values["status"] = "aguardando_revisao"
+
     updated = await patch_entity(database, "solicitacoes", request_id, values)
+    if reclassify:
+        await database.decisoes.insert_one({
+            "solicitacao_id": request_id,
+            "tipo": "reclassificacao_por_edicao",
+            "antes": current.get("decisao"),
+            "depois": updated.get("decisao"),
+            "criado_em": UTC_NOW(),
+        })
     if current.get("status") != updated.get("status"):
         await database.decisoes.insert_one({
             "solicitacao_id": request_id,
@@ -274,4 +345,6 @@ async def update_request(request_id: str, payload: RequestUpdate, database=Depen
 
 @router.delete("/solicitacoes/{request_id}", status_code=204)
 async def delete_request(request_id: str, database=Depends(get_database)):
+    await require_entity(database, "solicitacoes", request_id)
+    await database.decisoes.delete_many({"solicitacao_id": request_id})
     await delete_entity(database, "solicitacoes", request_id)

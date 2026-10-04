@@ -9,10 +9,6 @@ class Settings(BaseSettings):
     mongo_url: str = "mongodb://localhost:27017/mil-logistics"
     mongo_database: str = "mil-logistics"
     api_cors_origins: str = "http://localhost:5173"
-    decision_provider: str = "laya"
-    laya_model: str = ""
-    laya_review_threshold: float = 0.75
-
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property
